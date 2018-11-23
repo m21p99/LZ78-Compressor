@@ -28,74 +28,70 @@ class LZ78Compressor:
 			print 'Could not open input file ...'
 			raise
 		m_len = len(data)
-		print m_len
 		while i < m_len:
-			print i
-			# case I
+			# data[i] has not recorded in dict, 16 bit for prefixIndex, and 8 bit for the character
 			if data[i] not in tree_dict.keys():
-				yield (0, data[i])
+				output_buffer.frombytes(chr(0 >> 8))
+				output_buffer.frombytes(chr(0 & 0xff))
+				output_buffer.frombytes(data[i])
+
 				tree_dict[data[i]] = len(tree_dict) + 1
+
+				if verbose:
+					print "<0, %c>" % data[i]
+
 				i += 1
-			# case III
+			# if data[i] is the last char of string and already in dict, 16 bit for prefixIndex, and 8 bit for the character
 			elif i == m_len - 1:
-				yield (tree_dict.get(data[i]), '')
+				output_buffer.frombytes(chr(tree_dict[data[i]] >> 8))
+				output_buffer.frombytes(chr(tree_dict[data[i]] & 0xff))
+				output_buffer.frombytes(data[i])
+
+				if verbose:
+					print "<%i, %c>" % (tree_dict[data[i]], data[i])
+
 				i += 1
 			else:
 				for j in range(i + 1, m_len):
-					# case II
+					# substring is not in dict
 					if data[i:j + 1] not in tree_dict.keys():
-						yield (tree_dict.get(data[i:j]), data[j])
 						tree_dict[data[i:j + 1]] = len(tree_dict) + 1
+
+						output_buffer.frombytes(chr(tree_dict[data[i:j]] >> 8))
+						output_buffer.frombytes(chr(tree_dict[data[i:j]] & 0xff))
+						output_buffer.frombytes(data[j])
+
+						if verbose:
+							print "<%i, %c>" % (tree_dict[data[i:j]], data[j])
+
 						i = j + 1
 						break
-					# case III
+					# substring is still in dict and string has run out
 					elif j == m_len - 1:
-						yield (tree_dict.get(data[i:j + 1]), '')
+						output_buffer.frombytes(chr(tree_dict[data[i:j + 1]] >> 8))
+						output_buffer.frombytes(chr(tree_dict[data[i:j + 1]] & 0xff))
+						output_buffer.frombytes('')
+
+						if verbose:
+							print "<%i, ''>" % tree_dict[data[i]]
 						i = j + 1
-		print tree_dict
-		return 0
 
+		# fill the buffer with zeros if the number of bits is not a multiple of 8		
+		output_buffer.fill()
 
-		# 	if match: 
-		# 		# Add 1 bit flag, followed by 12 bit for distance, and 4 bit for the length
-		# 		# of the match 
-		# 		(bestMatchDistance, bestMatchLength) = match
+		# write the compressed data into a binary file if a path is provided
+		if output_file_path:
+			try:
+				with open(output_file_path, 'wb') as output_file:
+					output_file.write(output_buffer.tobytes())
+					print "File was compressed successfully and saved to output path ..."
+					return None
+			except IOError:
+				print 'Could not write to output file path. Please check if the path is correct ...'
+				raise
 
-		# 		output_buffer.append(True)
-		# 		output_buffer.frombytes(chr(bestMatchDistance >> 4))
-		# 		output_buffer.frombytes(chr(((bestMatchDistance & 0xf) << 4) | bestMatchLength))
-
-		# 		if verbose:
-		# 			print "<1, %i, %i>" % (bestMatchDistance, bestMatchLength),
-
-		# 		i += bestMatchLength
-
-		# 	else:
-		# 		# No useful match was found. Add 0 bit flag, followed by 8 bit for the character
-		# 		output_buffer.append(False)
-		# 		output_buffer.frombytes(data[i])
-				
-		# 		if verbose:
-		# 			print "<0, %s>" % data[i],
-
-		# 		i += 1
-
-		# # fill the buffer with zeros if the number of bits is not a multiple of 8		
-		# output_buffer.fill()
-
-		# # write the compressed data into a binary file if a path is provided
-		# if output_file_path:
-		# 	try:
-		# 		with open(output_file_path, 'wb') as output_file:
-		# 			output_file.write(output_buffer.tobytes())
-		# 			print "File was compressed successfully and saved to output path ..."
-		# 			return None
-		# 	except IOError:
-		# 		print 'Could not write to output file path. Please check if the path is correct ...'
-		# 		raise
-
-		# # an output file path was not provided, return the compressed data
-		# return output_buffer
+		# an output file path was not provided, return the compressed data
+		return output_buffer
 
 
 	def decompress(self, input_file_path, output_file_path=None):
@@ -115,25 +111,19 @@ class LZ78Compressor:
 			print 'Could not open input file ...'
 			raise
 
-		while len(data) >= 9:
+		while len(data) > 0:
 
-			flag = data.pop(0)
+			prefixIndex = (ord(data[0:8].tobytes()) << 8) | (ord(data[8:16].tobytes()))
+			byte = data[16:24].tobytes()
 
-			if not flag:
-				byte = data[0:8].tobytes()
-
+			if prefixIndex == 0:
 				output_buffer.append(byte)
-				del data[0:8]
+				
 			else:
-				byte1 = ord(data[0:8].tobytes())
-				byte2 = ord(data[8:16].tobytes())
+				output_buffer.append(output_buffer[prefixIndex - 1] + byte)
 
-				del data[0:16]
-				distance = (byte1 << 4) | (byte2 >> 4)
-				length = (byte2 & 0xf)
+			del data[0:24]
 
-				for i in range(length):
-					output_buffer.append(output_buffer[-distance])
 		out_data =  ''.join(output_buffer)
 
 		if output_file_path:
@@ -150,4 +140,5 @@ class LZ78Compressor:
 
 if __name__ == '__main__':
 	lz78 = LZ78Compressor()
-	lz78.compress('test_data.txt')
+	lz78.compress('source_data.txt','compressed_data.lz78', False)
+	lz78.decompress('compressed_data.lz78', 'decompressed_data.txt')
