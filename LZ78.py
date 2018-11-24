@@ -28,11 +28,14 @@ class LZ78Compressor:
 			print 'Could not open input file ...'
 			raise
 		m_len = len(data)
+
+		# compression format: 
+		# 12 bit for prefixIndex, which means the maximum of prefixIndex is 4095, and followed by 8 bit for the character
 		while i < m_len:
-			# data[i] has not recorded in dict, 16 bit for prefixIndex, and 8 bit for the character
+			# data[i] has not recorded in dict
 			if data[i] not in tree_dict.keys():
-				output_buffer.frombytes(chr(0 >> 8))
-				output_buffer.frombytes(chr(0 & 0xff))
+				output_buffer.frombytes(chr(0)) # high 8 bits
+				output_buffer.extend([0, 0, 0, 0]) # low 4 bits
 				output_buffer.frombytes(data[i])
 
 				tree_dict[data[i]] = len(tree_dict) + 1
@@ -41,10 +44,10 @@ class LZ78Compressor:
 					print "<0, %c>" % data[i]
 
 				i += 1
-			# if data[i] is the last char of string and already in dict, 16 bit for prefixIndex, and 8 bit for the character
+			# if data[i] is the last char of string and already in dict, 12 bit for prefixIndex, and 8 bit for the character
 			elif i == m_len - 1:
-				output_buffer.frombytes(chr(tree_dict[data[i]] >> 8))
-				output_buffer.frombytes(chr(tree_dict[data[i]] & 0xff))
+				output_buffer.frombytes(chr(tree_dict[data[i]] >> 4)) # high 8 bits
+				output_buffer.extend([tree_dict[data[i]] & 0x8, tree_dict[data[i]] & 0x4, tree_dict[data[i]] & 0x2, tree_dict[data[i]] & 0x1]) # low 4 bits
 				output_buffer.frombytes(data[i])
 
 				if verbose:
@@ -57,8 +60,8 @@ class LZ78Compressor:
 					if data[i:j + 1] not in tree_dict.keys():
 						tree_dict[data[i:j + 1]] = len(tree_dict) + 1
 
-						output_buffer.frombytes(chr(tree_dict[data[i:j]] >> 8))
-						output_buffer.frombytes(chr(tree_dict[data[i:j]] & 0xff))
+						output_buffer.frombytes(chr(tree_dict[data[i:j]] >> 4)) # high 8 bits
+						output_buffer.extend([tree_dict[data[i:j]] & 0x8, tree_dict[data[i:j]] & 0x4, tree_dict[data[i:j]] & 0x2, tree_dict[data[i:j]] & 0x1]) # low 4 bits
 						output_buffer.frombytes(data[j])
 
 						if verbose:
@@ -68,8 +71,8 @@ class LZ78Compressor:
 						break
 					# substring is still in dict and string has run out
 					elif j == m_len - 1:
-						output_buffer.frombytes(chr(tree_dict[data[i:j + 1]] >> 8))
-						output_buffer.frombytes(chr(tree_dict[data[i:j + 1]] & 0xff))
+						output_buffer.frombytes(chr(tree_dict[data[i:j + 1]] >> 4)) # high 8 bits
+						output_buffer.extend([tree_dict[data[i:j + 1]] & 0x8, tree_dict[data[i:j + 1]] & 0x4, tree_dict[data[i:j + 1]] & 0x2, tree_dict[data[i:j + 1]] & 0x1]) # low 4 bits
 						output_buffer.frombytes('')
 
 						if verbose:
@@ -78,7 +81,7 @@ class LZ78Compressor:
 
 		# fill the buffer with zeros if the number of bits is not a multiple of 8		
 		output_buffer.fill()
-
+		print 'The compression rate is', (1 - output_buffer.length() / (m_len * 8.0))
 		# write the compressed data into a binary file if a path is provided
 		if output_file_path:
 			try:
@@ -111,10 +114,10 @@ class LZ78Compressor:
 			print 'Could not open input file ...'
 			raise
 
-		while len(data) > 0:
+		while len(data) >= 20:
 
-			prefixIndex = (ord(data[0:8].tobytes()) << 8) | (ord(data[8:16].tobytes()))
-			byte = data[16:24].tobytes()
+			prefixIndex = (ord(data[0:8].tobytes()) << 4) | (ord(data[8:16].tobytes()) >> 4)
+			byte = data[12:20].tobytes()
 
 			if prefixIndex == 0:
 				output_buffer.append(byte)
@@ -122,7 +125,7 @@ class LZ78Compressor:
 			else:
 				output_buffer.append(output_buffer[prefixIndex - 1] + byte)
 
-			del data[0:24]
+			del data[0:20]
 
 		out_data =  ''.join(output_buffer)
 
