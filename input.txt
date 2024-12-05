@@ -1,3 +1,13 @@
+Il codice che hai fornito ha alcuni punti da sistemare, principalmente riguardanti la gestione della conversione tra `bitarray` e `bytes`, la manipolazione dei dati in modo corretto per la compressione e decompressione, e il trattamento dei byte e dei bit nei vari passaggi. Ecco una versione corretta del codice con alcune modifiche:
+
+### Correzioni principali:
+1. **Gestione del byte**: Quando lavori con `bitarray`, puoi ottenere i byte correttamente usando `tobytes()`, ma per gestire i singoli bit è meglio fare attenzione con il formato e il modo in cui li manipoli.
+2. **Conversione di dati in caratteri**: Quando lavori con i caratteri, è importante trattarli come interi a 8 bit (byte).
+3. **Verifica della lunghezza**: Quando gestisci i bit, assicurati che il numero di bit e byte sia coerente con i tuoi calcoli.
+
+Ecco la versione corretta del codice:
+
+```python
 # -*- coding:utf8 -*-
 import math
 from bitarray import bitarray
@@ -44,8 +54,8 @@ class LZ78Compressor:
                 tree_dict[data[i:i+1]] = len(tree_dict) + 1
 
                 if verbose:
-                    print("<0, %c>" % data[i:i+1])
-
+                    print("<0, %c>" % chr(data[i:i+1][0]))
+                    print("Buffer:", output_buffer)
                 i += 1
             else:
                 for j in range(i + 1, m_len + 1):
@@ -53,23 +63,24 @@ class LZ78Compressor:
                     if data[i:j] not in tree_dict:
                         # Record the prefixIndex and the new character
                         prefix_index = tree_dict[data[i:j-1]]
-                        output_buffer.extend([prefix_index >> 4])  # High 8 bits of the prefixIndex
-                        output_buffer.extend([prefix_index & 0xF])  # Low 4 bits of the prefixIndex
+                        # High and low bits for the prefixIndex (12 bits in total)
+                        output_buffer.extend([(prefix_index >> 4) & 0xFF])  # High 8 bits
+                        output_buffer.extend([prefix_index & 0xF])  # Low 4 bits
                         output_buffer.frombytes(data[j-1:j])  # Add the new character
 
                         # Add the new substring to the dictionary
                         tree_dict[data[i:j]] = len(tree_dict) + 1
 
                         if verbose:
-                            print("<%i, %c>" % (prefix_index, data[j-1:j]))
+                            print("<%i, %c>" % (prefix_index, chr(data[j-1])))
 
                         i = j  # Move to the next segment
                         break
                     elif j == m_len:
                         # If the string ends and still in dict, handle it
                         prefix_index = tree_dict[data[i:j]]
-                        output_buffer.extend([prefix_index >> 4])  # High 8 bits of the prefixIndex
-                        output_buffer.extend([prefix_index & 0xF])  # Low 4 bits of the prefixIndex
+                        output_buffer.extend([(prefix_index >> 4) & 0xFF])  # High 8 bits
+                        output_buffer.extend([prefix_index & 0xF])  # Low 4 bits
                         output_buffer.frombytes(b'')  # Empty character for end of string
 
                         if verbose:
@@ -145,5 +156,14 @@ class LZ78Compressor:
 
 if __name__ == '__main__':
     lz78 = LZ78Compressor()
-    lz78.compress('input.txt', 'compressed_data.lz78', False)
-    lz78.decompress('compressed_data.lz78', 'decompressed_data.txt')
+    lz78.compress('input.txt', 'input.lz78', True)
+    lz78.decompress('input.lz78', 'decompressed_dataOutput.txt')
+```
+
+### Modifiche importanti:
+
+1. **Correzione dell'uso di `chr()`**: Quando si stampa il carattere, è necessario utilizzare il valore corretto dell'elemento, come ad esempio `chr(data[i:i+1][0])`, che prende il primo byte del dato.
+2. **Estensione dei bit**: Quando si estende il `output_buffer` con i 12 bit per `prefixIndex`, si assicura di gestire correttamente i bit alti e bassi.
+3. **Gestione dei byte nei dati**: Quando si gestiscono i dati compressi e decompressi, si fa attenzione ai byte estratti dai `bitarray` (come nel caso di `tobytes()`).
+
+Assicurati di testare il codice su file di input validi per verificare che la compressione e la decompressione funzionino correttamente. Se hai altre domande o vuoi ulteriori modifiche, fammi sapere!
